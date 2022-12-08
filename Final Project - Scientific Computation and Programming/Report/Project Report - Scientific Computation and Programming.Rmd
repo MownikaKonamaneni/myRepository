@@ -1,0 +1,259 @@
+---
+title: "Final Project Report - Optimization using CVXR package"
+output: html_document
+date: "2022-12-06"
+editor_options: 
+  markdown: 
+    wrap: 72
+---
+
+# Abstract
+
+Optimization is maximizing or minimizing a real function by
+systematically choosing input values from an allowed set and computing
+the value of the function. Means optimization is always interested in
+finding the best solution. Convex optimization problem is an
+optimization problem where you want to find a point that
+maximizes/minimizes the objective function through iterative
+computations (typically, iterative linear programming) involving convex
+functions. Almost all the machine learning models uses optimization
+techniques to find the optimal results. In this project we are
+optimizing Simple least squares problem, Polynomial fitting and logistic
+regression by replicating the data from MATLAB examples.
+
+# Introduction
+
+Simple least square is a common technique for estimating coefficients
+of linear regression. Optimizing simple least square problem is used for
+finding the best-fitting curve to a given set of points by minimizing
+the sum of the squares ("the residuals") of the points from the curve.
+
+When the data follows linear relationship then we fit straight line
+through the data points. Linear regression is single degree polynomial
+where degree of input variable is 1. If the data is following non-linear
+relationship then we need to fit a higher degree polynomial or piece
+wise linear regression. Here we fit higher degree polynomial curve. We
+followed two methods to fit the polynomial curve that is by optimizing
+L2 norm and L-infinity norm. L2 norm measures square root of the sum of
+the squared vector values. L-infinity norm measures the maximum
+distance.
+
+Logistic regression is defined as a binary classification problem. Based
+on the logistic function, the difference between a dependent and
+independent variable is estimated by estimating the probability of each
+different occurrence. As it is an extension of linear regression used to
+predict continuous output variables, it is used to predict the outcome
+of the independent variable (1 or 0 either yes or no). In this project
+we are optimizing logistic regression by maximizing log likelihood
+function.
+
+# Methods description
+
+**Libraries used**
+
+```{r, results='hide', message=FALSE, warning=FALSE}
+library(CVXR)
+library(ggplot2)
+library(pracma)
+library(dplyr)
+library(kableExtra)
+```
+
+**Optimization of simple least square problem**
+
+```{r, echo=FALSE}
+n = 100
+A = randn(2*n, n) #Create Random Matrices of size 200*100
+b = randn(2*n,1) #Create Random Matrices of size 200*1
+
+```
+
+Based on the MATLAB example, we created predictor variable A and
+response variable b with 100 dimensions in matrix notation with random
+data points. Used minimize function from CVXR package to minimize the
+simple least square(Euclidean norm) problem.
+
+```{r}
+beta_r = Variable(n)
+#Minimize least squares(sum(Y - X*beta)^2)
+problem <- Problem(Minimize(sum((b - A %*% beta_r)^2)))
+result_ls <- solve(problem)
+# result_ls
+#Estimated coefficient values for simple least squares regression 
+result_ls$getValue(beta_r)
+```
+
+**Polynomial fitting**
+
+1.  Estimating parameters of polynomial in case of L2-norm by solving
+    polynomial equation in matrix notation
+
+    $A * β = v$
+
+```{r, echo=FALSE, message=FALSE}
+n = 6
+m = 40
+u = seq(-1, 1, length = m)
+v = 1/(5+40*u^2) + 0.1*u^3 + 0.01*rnorm(m)   
+v = as.vector(v)
+
+# plot(u,v)
+```
+
+```{r}
+A = vander(u)
+A = A[,m-n+(1:n)]   #last column of A
+beta <- qr.solve(A,v)  #coefficients  
+
+v_hat = A%*%beta
+
+dd = data.frame(u, v, v_hat)
+u2 = seq(-1.1, 1.1, length.out = 1000)
+
+dd_u2 = data.frame(u2, horner(beta, u2))
+ggplot()+
+  geom_point(data=dd, aes(x=u,y=v))+
+  geom_line(data=dd_u2, aes(x=u2, y=y))
+```
+
+2.  Minimizing a cost function(L-infinity norm) - minimizing maximum
+    error to estimate parameter coefficient
+
+```{r}
+beta_inf = Variable(n)
+
+obj = norm((v - A%*%beta_inf), 'I')
+prob = Problem(Minimize(expr=obj))
+result = solve(prob)
+
+beta_inf = unlist(result[1][1], use.names=FALSE)
+
+v_hat_inf = A%*%(beta_inf)
+
+dd_inf = data.frame(u, v, v_hat_inf)
+
+dd_u2_inf = data.frame(u2, horner(beta_inf, u2))
+```
+
+Plot to view the results
+
+```{r}
+ggplot()+
+  geom_point(data=dd_inf, aes(x=u,y=v, color='data points'), shape='o')+
+  geom_line(data=dd_u2, aes(x=u2, y=y, color='L2 Norm'))+
+  geom_line(data=dd_u2_inf, aes(x=u2, y=y, color='L-Inf Norm'), linetype='dashed')+
+  scale_color_manual(name = "Type", values = c("data points"="black", "L2 Norm"="blue", "L-Inf Norm"="orange"))+ 
+  ggtitle("Fitting of data points with two polynomials of degree 5")
+```
+
+**Logistic Regression**
+
+```{r}
+a = 1
+b = -5
+m = 100
+#set.seed(183991)
+u = 10 * runif(n = m, min=1e-12, max=.9999999999)
+```
+
+We consider a binary random variable y with $P(y=1) = p$ and \$P(y=0) =
+1-p\$ . We assume that that y depends on a vector of explanatory
+variables u in R\^n. The logistic model has the sigmoid form \$p =
+exp(a'u+b)/(1+exp(a'u+b))\$ , where a and b are the model parameters. We
+have m data points $(u_1,y_1),…,(u_m,y_m)$ . We can reorder the data so
+that for $u_1,..,u_q$ the outcome is y = 1 and for $u_(q+1),…,u_m$ the
+outcome is y = 0.
+
+We used custom function to apply sigmoid function
+$p = exp(a'u+b)/(1+exp(a'u+b))$ to convert in the scale of 0 to 1.
+
+```{r}
+a = 1
+b = -5
+m = 100
+#set.seed(183991)
+u = 10 * runif(n = m, min=1e-12, max=.9999999999)
+
+Sigmoid_fn <- function(a,b,u_i = 0){
+  result = exp( ((a * u_i) + b)  )
+  result = result/( 1 + result)
+  return(result)
+}
+
+y = c()
+for(i in 1:m){
+  y[i] = Sigmoid_fn(a,a, u[i])
+}
+
+for(i in 1:m){
+  if (runif(n = 1, min=1e-12, max=.9999999999) < Sigmoid_fn(a,b, u[i]) ){
+    y[i] = 1
+  } else{
+    y[i] = 0
+  }
+}
+par(mar=c(1, 1, 1, 1))
+```
+
+We optimized the logistic regression by maximizing the log likelihood of
+the function
+
+$Maximize$ $\sum_{i=1}^{q} {uilog(p(u_{i}))+(1−b_{i})log(1−p(x_{i}))}$
+.\
+
+```{r}
+u1 = c( u[which(y == 1)], u[which(y == 0)]  )
+y1 = c( y[which(y == 1)], y[which(y == 0)]  )
+
+
+aml = Variable(1)
+bml = Variable(1)
+
+obj <- sum((u1[ y1 == 1] %*% aml) + bml)  - sum(logistic((u1 %*% aml) + bml) )
+prob <- Problem(Maximize(obj))
+result <- solve(prob)
+
+result$status
+result$value
+result$getValue(aml)
+result$getValue(bml)
+
+aml_value = result$getValue(aml)
+bml_value = result$getValue(bml)
+
+y_ml = c()
+for(i in 1:m){
+  y_ml[i] = Sigmoid_fn(aml_value,bml_value, u[i])
+}
+
+```
+
+```{r}
+df <- data.frame(
+  u = u,
+  y = y,
+  y_ml = y_ml)
+  
+ggplot()+
+  geom_point(data=df, aes(x=u,y=y, color = 'orange'))+
+  geom_line(data=df, aes(x=u, y=y_ml, color = 'blue'))
+```
+
+**Conclusions**
+
+For simple least square problem, the minimize function has
+reduced/minimized $\beta$ coefficients to reduce the residuals to fit
+the best fit line with minimum error. For polynomial fitting by
+optimizing L-${\infty}$ norm made curve towards the outlier which is
+having maximum distance among the data points. L- ${\infty}$ seems prone
+to outliers, outliers must be removed before optimizing L-${\infty}$
+norm. For logistic regression, the maximize function has been maximized
+log likelihood function to get the better results from logistic
+regression.
+
+**Appendix**
+
+References
+
+1.  Convex optimization in R <https://cvxr.rbind.io/>
+2.  Example library <http://web.cvxr.com/cvx/examples/index.html>

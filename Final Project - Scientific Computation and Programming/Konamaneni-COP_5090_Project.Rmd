@@ -1,0 +1,192 @@
+---
+title: "Optimization using CVXR package"
+author: "Konamaneni Mownika mkonamaneni4501@floridapoly.edu, \nSusmitha Gopavaram sgopavaram2200@floridapoly.edu, \nBidnu Lasya  Nandimandalam bnandimandalam2353@floridapoly.edu" 
+date: "2022-11-03"
+output: html_document
+---
+
+```{r}
+library(CVXR)
+library(ggplot2)
+library(pracma)
+library(dplyr)
+library(kableExtra)
+```
+
+# solving a simple least-squares problem
+
+```{r}
+n = 100
+A = randn(2*n, n) #Create Random Matrices of size 200*100
+b = randn(2*n,1) #Create Random Matrices of size 200*1
+
+
+beta_r = Variable(n)
+#Minimize least squares(sum(Y - X*beta)^2)
+problem <- Problem(Minimize(sum((b - A %*% beta_r)^2)))
+result_ls <- solve(problem)
+# result_ls
+#Estimated coefficient values for simple least squares regression 
+result_ls$getValue(beta_r)
+
+
+
+```
+
+
+
+Polynomial fitting
+```{r}
+#Data preparation based on function provided in MATLAB
+set.seed(1234)
+n = 6
+m = 40
+u = seq(-1, 1, length = m)
+v = 1/(5+40*u^2) + 0.1*u^3 + 0.01*rnorm(m)   
+v = as.vector(v)
+
+plot(u,v)
+```
+## Estimating parameters of polynomial by solving equations below via QR decomposition
+$A*\beta=v$
+
+```{r}
+
+print("Computing optimal polynomial in the case of L2-norm...")
+
+A = vander(u)
+A = A[,m-n+(1:n)]   #last column of A
+beta <- qr.solve(A,v)  #coefficients  
+
+v_hat = A%*%beta
+
+
+dd = data.frame(u, v, v_hat)
+u2 = seq(-1.1, 1.1, length.out = 1000)
+
+
+dd_u2 = data.frame(u2, horner(beta, u2))
+ggplot()+
+  geom_point(data=dd, aes(x=u,y=v))+
+  geom_line(data=dd_u2, aes(x=u2, y=y))
+
+
+
+```
+
+```{r}
+print("Computing optimal polynomial in the case of L-Inf norm...")
+
+beta_inf = Variable(n)
+
+obj = norm((v - A%*%beta_inf), 'I')
+prob = Problem(Minimize(expr=obj))
+result = solve(prob)
+
+beta_inf = unlist(result[1][1], use.names=FALSE)
+
+v_hat_inf = A%*%(beta_inf)
+
+dd_inf = data.frame(u, v, v_hat_inf)
+
+dd_u2_inf = data.frame(u2, horner(beta_inf, u2))
+
+
+ggplot()+
+  geom_point(data=dd_inf, aes(x=u,y=v, color='data points'), shape='o')+
+  geom_line(data=dd_u2, aes(x=u2, y=y, color='L2 Norm'))+
+  geom_line(data=dd_u2_inf, aes(x=u2, y=y, color='L-Inf Norm'), linetype='dashed')+
+  scale_color_manual(name = "Type", values = c("data points"="black", "L2 Norm"="blue", "L-Inf Norm"="orange"))+ 
+  ggtitle("Fitting of data points with two polynomials of degree 5")
+
+
+```
+
+
+# Logistic regression 
+
+
+```{r}
+
+
+## We restrict ourselves to solvers on CRAN
+CVXR::add_to_solver_blacklist(c("CPLEX", "GUROBI", "MOSEK", "CBC"))
+
+
+a = 1
+b = -5
+m = 100
+#set.seed(183991)
+u = 10 * runif(n = m, min=1e-12, max=.9999999999)
+
+function_y <- function(a,b,u_i = 0){
+  result = exp( ((a * u_i) + b)  )
+  result = result/( 1 + result)
+  return(result)
+}
+
+y = c()
+for(i in 1:m){
+  y[i] = function_y(a,a, u[i])
+}
+
+for(i in 1:m){
+  if (runif(n = 1, min=1e-12, max=.9999999999) < function_y(a,b, u[i]) ){
+    y[i] = 1
+  } else{
+    y[i] = 0
+  }
+}
+par(mar=c(1, 1, 1, 1))
+plot(u,y)
+
+u1 = c( u[which(y == 1)], u[which(y == 0)]  )
+
+y1 = c( y[which(y == 1)], y[which(y == 0)]  )
+
+aml = Variable(1)
+bml = Variable(1)
+
+
+obj <- sum((u1[ y1 == 1] %*% aml) + bml)  - sum(logistic((u1 %*% aml) + bml) )
+
+prob <- Problem(Maximize(obj))
+result <- solve(prob)
+
+result$status
+result$value
+result$getValue(aml)
+result$getValue(bml)
+
+aml_value = result$getValue(aml)
+bml_value = result$getValue(bml)
+
+y_ml = c()
+for(i in 1:m){
+  y_ml[i] = function_y(aml_value,bml_value, u[i])
+}
+
+# plot(u,y_ml)
+
+df <- data.frame(
+  u = u,
+  y = y,
+  y_ml = y_ml
+)
+
+
+
+ggplot()+
+  geom_point(data=df, aes(x=u,y=y, color = 'orange'))+
+  geom_line(data=df, aes(x=u, y=y_ml, color = 'blue'))
+```
+
+
+
+
+
+
+
+
+
+
