@@ -257,3 +257,5 @@ References
 
 1.  Convex optimization in R <https://cvxr.rbind.io/>
 2.  Example library <http://web.cvxr.com/cvx/examples/index.html>
+3.  GitHub Link:
+    <https://github.com/MownikaKonamaneni/Projects-dataScience/tree/main/Final%20Project%20-%20Scientific%20Computation%20and%20Programming>
